@@ -1,0 +1,117 @@
+---
+title: "Machine Learning"
+output: html_document
+---
+###Executive Summary
+
+####Devices like Jawbone Up, Nike FuelBand, and Fitbit are used to collect a large amount of data about personal activity. The data for this project is available at: http://groupware.les.inf.puc-rio.br/har. The goal of this project is to predict the manner in which people exercise. The "classe" variable in the training set is used to define this. In this report the data is cleased and columns that have all zero or NA values and near zero variance are removed. The columns that we dont care about like username and time of exercise are also removed. Cross validation is done by breaking the training set into a training set and a validation set. Two models are used for predicion: Decision Tree and Random Forest. A decision is made based on higher accuracy to go with the Random Forest model and predicted values are shown for the test data set.  
+
+
+###Analysis
+####Load libraries needed for analysis like randomForest, caret, etc and Set seed for reproducibility  
+```{r library,results='hide'}
+require(caret)
+require(rpart)
+require(rpart.plot)
+require(randomForest)
+set.seed(12345678) 
+```
+####Loading Training and Test data sets. The data for this project come from  this source: http://groupware.les.inf.puc-rio.br/har.  
+```{r load, echo=FALSE, cache=TRUE}                   
+dest <- "./train"
+if(!file.exists(dest)){
+  fileUrl <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+  download.file(fileUrl, dest)
+}
+training <- read.csv(dest, header = TRUE, na.strings=c("NA","#DIV/0!", ""))
+                     
+dest <- "./test"
+if(!file.exists(dest)){
+  fileUrl <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+  download.file(fileUrl, dest)
+}
+testing <- read.csv(dest, header = TRUE, na.strings=c("NA","#DIV/0!", ""))
+
+```
+####Data file dimensions
+```{r file}
+dim(training)
+dim(testing)
+```
+
+####Cleaning Data set and creating a validation set: Steps done involve first deleting columns with all missing values. Then partitioning the training data set to allow cross-validation. Then removing user and time based rows as we don't need them for the prediction we are doing. 
+#### For cross-validation as shown below we have split the training set into a training set with 60% of the original data and a validation set with the remaining 40% of the original data. This will help us in training a model and validating it to determine the mroe accurate model for the final test data set. 
+
+```{r clean}
+# Delete columns with all missing values
+training<-training[,colSums(is.na(training)) == 0]
+testing <-testing[,colSums(is.na(testing)) == 0]
+
+
+# Partitioning the training data set to allow cross-validation
+set <- createDataPartition(training$classe, p = 0.6, list = FALSE)
+Trainset <- training[set, ]
+Validateset <- training[-set, ]
+
+# Remove near zero variance features
+nzv <- nearZeroVar(Trainset)
+trainnzv <- Trainset[-nzv] 
+validatenzv <- Validateset[-nzv]
+testnzv <- testing[-nzv]
+
+# Remove user and time based rows as we dont need them for the calculation
+trainnzv<- trainnzv[,-c(1:6)]
+validatenzv<- validatenzv[,-c(1:6)]
+testnzv<- testnzv[,-c(1:6)]
+```
+
+#####The new dimensions of the sets are shown. Also the different values for the classe variable in the training data set are shown along with the count.
+```{r dim2}
+dim(trainnzv)
+dim(validatenzv)
+dim(testnzv)
+table(trainnzv$classe)
+```
+
+###Prediction:
+#####*Two models are used for prediction*
+#####Prediction model 1: Decision Tree (model, prediction,plot, and test): rpart is used to model using the training data set. the predict function is used on the validate data set. The classification tree is shown. 
+#####Prediction model 2: Random Forest (model, prediction, and test): random Forest function is used to model the training set data. the predict function is again run on the validate data set.
+```{r pred}
+#Prediction model 1: Decision Tree 
+model_one <- rpart(classe ~ ., data=trainnzv, method="class")
+prediction_one <- predict(model_one, validatenzv, type = "class")
+rpart.plot(model_one, main="Classification Tree", extra=106, under=TRUE, faclen=0)
+
+#Prediction model 2: Random Forest (model, prediction, and test)
+model_two <- randomForest(classe ~ . , data=trainnzv,importance=TRUE,keep.forest=TRUE)
+prediction_two <- predict(model_two, validatenzv, type = "class")
+```
+
+###Decision
+##### Using the function confusionMatrix of the Caret package we can calculate a cross-tabulation of the observed and predicted classes. In short we can see the accuracy of the predict models: Decision Tree and Random Forest.We can see that the accuracy of the Decision Tree gives an accuracy of 0.7267 and a 95% CI : (0.7167, 0.7366). While Random Forest gives an accuracy of 0.9941 and a 95% CI : (0.9922, 0.9957). So I decided to go with the Random Forest model for the final test data set calculation as the error is less than 1%.So the amount oftest data to be misclassified would be very low.
+```{r decision, echo=FALSE}
+confusionMatrix(prediction_one, validatenzv$classe)
+confusionMatrix(prediction_two, validatenzv$classe)
+```
+
+
+###Test Output
+#####Using model two (Random Forest model) we can see the final prediciton results for classe variable for the test data.
+```{r final}
+final <- predict(model_two, testnzv, type="class")
+final
+```
+
+#####Creating the seperate files according to the code given to create separate files for submission
+```{r sub, results='hide'}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(final)
+```
